@@ -16,7 +16,9 @@
 
 library(raster);library(rgdal);library(tripack);library(SDMTools); library(manipulate);library(clhs);library(entropy)
 
-setwd("F:/Projects/EPM/data/SWTest") # set your working directory as appropriate
+# setwd("F:/Projects/EPM/data/SWTest") # set your working directory as appropriate
+
+setwd("../data/SWTest")
 
 #generate Dataframe of covariates
 ####create stacks of Covariates & groups of Covariates####
