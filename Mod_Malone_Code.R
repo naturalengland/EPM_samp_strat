@@ -44,17 +44,23 @@ CoV_SupGeo <- stack(lapply(list.files(path = "./AlignedRasters",
 
 CoV_All <- stack(CoV_SAR, CoV_DTM, CoV_Slope, CoV_PSL, CoV_SupGeo) #RasterStack of All of the CoVariates
 
-CoV_sans_SAR <- stack(CoV_DTM, CoV_Slope, CoV_PSL, CoV_SupGeo) #RasterStack No SAR
-
-CoV_sans_PSL <- stack(CoV_SAR, CoV_DTM, CoV_Slope, CoV_SupGeo) #RasterStack No PSL
-
-CoV_Slope_Elev <- stack(CoV_DTM, CoV_Slope) #RasterStack Only Slope & elevation
-
+#########################################
 #Check all covariates are loaded
 names(CoV_All)
+
 #creating a DataFrame of selected Covariates####
 CoV_DF <- as.data.frame(rasterToPoints(CoV_All)) #change the Cov_x layer as required
+CoV_DF$Small_SupGeo_SW <- as.factor(CoV_DF$Small_SupGeo_SW)
 str(CoV_DF)
+
+CoV_sans_SAR <- subset(CoV_DF, select =c(1,2,6:11))
+str(CoV_sans_SAR)
+
+CoV_sans_PSL <- subset(CoV_DF, select =c(1:7,11)) #RasterStack No PSL
+str(CoV_sans_PSL)
+
+CoV_Slope_Elev <- subset(CoV_DF, select =c(1,2,6,7))
+str(CoV_Slope_Elev)
 
 ####################################################################
 # Data analysis for the population data
@@ -63,7 +69,7 @@ str(CoV_DF)
 #Quantiles of the population (this is for test 3)
 
 # Number of bins
-nb<- 25
+nb <- 25
 
 #quantile matrix (of the covariate data)
 q.mat<- matrix(NA, nrow=(nb+1), ncol= 9) #amended col to account for no. CoV.
