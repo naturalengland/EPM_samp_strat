@@ -14,7 +14,7 @@
 ######
 
 
-library(raster);library(rgdal);library(tripack);library(SDMTools); library(manipulate);library(clhs);library(entropy)
+library(raster);library(rgdal);library(tripack);library(SDMTools); library(manipulate);library(clhs);library(entropy);library(ggplot2);library(ggpubr)
 
 # setwd("F:/Projects/EPM/data/SWTest") # set your working directory as appropriate
 
@@ -23,63 +23,56 @@ setwd("../data/SWTest")
 #generate Dataframe of covariates
 ####create stacks of Covariates & groups of Covariates####
 CoV_SAR <- stack(lapply(list.files(path = "./AlignedRasters",
-                                   pattern = paste0("2017SAR_SW_Aligned.tif$"),
+                                   pattern = paste0("*SAR_SW.tif$"),
                                    full.names = T), brick))
 
 CoV_DTM <- stack(lapply(list.files(path = "./AlignedRasters", 
-                                   pattern = paste0("DTM_SW_Aligned.tif$"), 
+                                   pattern = paste0("*DTM_SW.tif$"), 
                                    full.names = T), raster))
 
 CoV_Slope <- stack(lapply(list.files(path = "./AlignedRasters", 
-                                   pattern = paste0("Slope_SW_Aligned.tif$"), 
+                                   pattern = paste0("*Slope_SW.tif$"), 
                                    full.names = T), raster))
 
 CoV_PSL <- stack(lapply(list.files(path = "./AlignedRasters", 
-                                     pattern = paste0("PeatySoils_SW_Aligned.tif$"), 
+                                     pattern = paste0("*PeatySoils_SW.tif$"), 
                                      full.names = T), brick))
 
 CoV_SupGeo <- stack(lapply(list.files(path = "./AlignedRasters", 
-                                   pattern = paste0("SupGeo_SW_Aligned.tif$"), 
+                                   pattern = paste0("*SupGeo_SW.tif$"), 
                                    full.names = T), raster))
 
 CoV_All <- stack(CoV_SAR, CoV_DTM, CoV_Slope, CoV_PSL, CoV_SupGeo) #RasterStack of All of the CoVariates
 
-CoV_sans_SAR <- stack(CoV_DTM, CoV_Slope, CoV_PSL, CoV_SupGeo) #RasterStack No SAR
-
-CoV_sans_PSL <- stack(CoV_SAR, CoV_DTM, CoV_Slope, CoV_SupGeo) #RasterStack No PSL
-
-CoV_Slope_Elev <- stack(CoV_DTM, CoV_Slope) #RasterStack Only Slope & elevation
-
+#########################################
 #Check all covariates are loaded
 names(CoV_All)
+
 #creating a DataFrame of selected Covariates####
 CoV_DF <- as.data.frame(rasterToPoints(CoV_All)) #change the Cov_x layer as required
+CoV_DF$Small_SupGeo_SW <- as.factor(CoV_DF$Small_SupGeo_SW)
 str(CoV_DF)
+
+CoV_sans_SAR <- subset(CoV_DF, select =c(1,2,6:11))
+str(CoV_sans_SAR)
+
+CoV_sans_PSL <- subset(CoV_DF, select =c(1:7,11)) #RasterStack No PSL
+str(CoV_sans_PSL)
+
+CoV_Slope_Elev <- subset(CoV_DF, select =c(1,2,6,7))
+str(CoV_Slope_Elev)
 
 ####################################################################
 # Data analysis for the population data
-
-####UNUSED PCA####
-#Principal components of the population (the is for tests 1 and 2)
-pca1 = prcomp(df,scale=TRUE, center=TRUE)
-scores_pca1 = as.data.frame(pca1$x)
-screeplot(pca1) ## plot the variances explained by each component
-biplot(pca1)
-summary(pca1)
-
-# retreive the loadings
-pca1.load<- matrix(NA,ncol=4,nrow=4 )
-for (i in 1:4){
-  pca1.load[i,]<- as.matrix(t(pca1$rotation[i,]))}
 
 ####USED for KL ####
 #Quantiles of the population (this is for test 3)
 
 # Number of bins
-nb<- 25
+nb <- 25
 
 #quantile matrix (of the covariate data)
-q.mat<- matrix(NA, nrow=(nb+1), ncol= 9) #amended to 9 cols to account for no. CoV.
+q.mat<- matrix(NA, nrow=(nb+1), ncol= 9) #amended col to account for no. CoV.
 j=1
 for (i in 3:ncol(CoV_DF)){ #note the index start here
   #get a quantile matrix together of the covariates
@@ -91,7 +84,6 @@ q.mat
 
 #covariate data hypercube (this is for test 4)
 ## This takes a while to do so only do it once if you can < This really does take a long time.
-##MAY NEED TO ADAPT THIS TO ACCOUNT FOR NA'S CLIP THE RASTERS BY A MASK OF LAND
 cov.mat<- matrix(1, nrow=nb, ncol=9)
 for (i in 1:nrow(CoV_DF)){ # the number of pixels
   cntj<- 1 
@@ -118,35 +110,33 @@ cov.mat
 #beginning of algorithm
 
 #initial settings
-cseq<- seq(500,2000,500) # cLHC sample size, (beginning, end, step)
+cseq<- seq(50,500,50) # cLHC sample size, (beginning, end, step)
 its.clhs <- 10 #number of iterations within clhs
 its<-5  # number internal iterations with each sample size number
-mat.seq<- matrix(NA,ncol=8,nrow=length(cseq)) #empty matrix for outputs
+mat.seq<- matrix(NA,ncol=2,nrow=length(cseq)) #empty matrix for outputs
+mat.f<- matrix(NA,ncol=2,nrow=its ) # placement for iteration outputs
 
 
 for (w in 1:length(cseq)){ # for every sample number configuration....
   s.size=cseq[w]  # sample size
-  print(paste("Evaluating sample of size ", s.size))
-  mat.f<- matrix(NA,ncol=8,nrow=its ) # placement for iteration outputs
+  print("Calculating KL divergence")
   
   #internal loop
   for (j in 1:its){ #Note that this takes quite a while to run to completion
-    count.rpt <- 1
+    print(paste("evaluating sample of size ", s.size))
     print(paste("iteration", j, "of", its))
     repeat{
       start.rpt <- Sys.time()
       ss <- clhs(CoV_DF, size = s.size, progress = T, iter = its.clhs) # Do a conditioned latin hypercube sample
-      print(paste("repetition ", count.rpt, " of ?")); count.rpt <- count.rpt + 1
       s.CoV_DF<- CoV_DF[ss,]
       print(paste("time to calculate hypercube = ", lubridate::as.duration(Sys.time() - start.rpt)))
       if (sum(duplicated(s.CoV_DF) | duplicated(s.CoV_DF[nrow(s.CoV_DF):1, ])[nrow(s.CoV_DF):1]) < 2)
       {break}}
     
+
     ## Fourth test: Kullback-Leibler (KL) divergence####
     ####Compare whole study area covariate space with the slected sample
     #sample data hypercube (essentially the same script as for the grid data but just doing it on the sample data)
-    
-    print("Calculating KL divergence")
     
     h.mat<- matrix(1, nrow=nb, ncol=9)
     
@@ -174,51 +164,39 @@ for (w in 1:length(cseq)){ # for every sample number configuration....
     klo.9<- KL.empirical(c(cov.mat[,9]), c(h.mat[,9])) #9
 
     klo<- mean(c(klo.1, klo.2,klo.3,klo.4,klo.5,klo.6,klo.7,klo.8,klo.9))
-    mat.f[j,8]<- klo  # value of 0 means no divergence
+    mat.f[j,2]<- klo  # value of 0 means no divergence
     print(paste("KL divergence =", klo))
   } 
   
   
   #arrange outputs
-  mat.seq[w,1]<-mean(mat.f[,6])
-  mat.seq[w,2]<-sd(mat.f[,6])
-  mat.seq[w,3]<-min(mat.f[,1])
-  mat.seq[w,4]<-max(mat.f[,1])
-  mat.seq[w,5]<-mean(mat.f[,7])
-  mat.seq[w,6]<-sd(mat.f[,7])
-  mat.seq[w,7]<-mean(mat.f[,8])
-  mat.seq[w,8]<-sd(mat.f[,8])} ## END of LOOP
+  mat.seq[w,1]<-mean(mat.f[,2])
+  mat.seq[w,2]<-sd(mat.f[,2])} ## END of LOOP
 
 dat.seq<- as.data.frame(cbind(cseq,mat.seq))
-names(dat.seq)<- c("samp_nos", "mean_dist","sd_dist", "min_S", "max_S", "mean_PIP","sd_PIP", "mean_KL","sd_KL")
+names(dat.seq)<- c("samp_nos","mean_KL","sd_KL")
 ##########################################################
 
 
 
 #######################################################  
 #plot some outputs
-plot(cseq,mat.seq[,1], xlab="number of samples", ylab= "similarity between covariates (entire field) with covariates (sample)",main="Population and sample similarity")
-plot(cseq,mat.seq[,2],xlab="number of samples", ylab= "standard deviation similarity between covariates (entire field) with covariates (sample)",main="Population and sample similarity (sd)")
-plot(cseq,mat.seq[,3])
-plot(cseq,mat.seq[,4])
-plot(cseq,mat.seq[,5],xlab="number of samples", ylab= "percentage of total covariate variance of population account for in sample",main="Population and sample similarity")
-plot(cseq,mat.seq[,6],xlab="number of samples", ylab= "standard deviation of percentage of total covariate variance of population account for in sample",main="Population and sample similarity")
-plot(cseq,mat.seq[,7],xlab="number of samples", ylab= "KL divergence")
-plot(cseq,mat.seq[,8],xlab="number of samples", ylab= "standard deviation of percentage of total covariate variance of population account for in sample",main="Population and sample similarity")
+plot(dat.seq[,1],dat.seq[,2],xlab="number of samples", ylab= "KL divergence")
+plot(dat.seq[,1],dat.seq[,3],xlab="number of samples", ylab= "standard deviation of percentage of total covariate variance of population account for in sample",main="Population and sample similarity")
 write.table(dat.seq, "Nav_datseq_clHC.txt", col.names=T, row.names=FALSE, sep=",")  # Save output to text file
 ##########################################################
 
 
 
 ##########################################################
-# make an exponetial decay function (of the KL divergence)
+#Individual Plots
+#Plot 1 = Kl divergence by number of samples with line
 x<- dat.seq$samp_nos
-y = 1- (dat.seq$mean_PIP-min(dat.seq$mean_PIP))/(max(dat.seq$mean_PIP)-min(dat.seq$mean_PIP)) #PIP
-
-
-#Parametise Exponential decay function
-plot(x, y, xlab="sample number", ylab= "1 - PC similarity")          # Initial plot of the data
+y <- dat.seq$mean_KL
 start <- list()     # Initialize an empty list for the starting values
+
+
+plot(x, y, xlab="sample number", ylab= "KL divergence")          # Initial plot of the data
 
 #fit 1
 manipulate(
@@ -236,54 +214,83 @@ fit1 <- nls(y ~ k*exp(-b1*x) + b0, start = start)
 summary(fit1) 
 lines(x, fitted(fit1), col="red")
 
+#DF OF PREDICTED VALUES FOR SAMPLE SIZE
+Pred <- data.frame(2:(max(cseq)+1))
+Pred$samp_nos <- seq(1, max(cseq), 1)
+Pred$Pred_KL <- predict(fit1,list(x=Pred$samp_nos))
+Pred [1] <- NULL
 
-### Not used ###
-#double exponential
-#start <- list()
-#manipulate(
-#{
-#  plot(x, y)
-#  k <- kk; b0 <- b00; b1 <- b10; b2 <- b20
-#  curve(k*(exp(-b1*x) + exp(-b2*x)) + b0, add=TRUE)
-#  start <<- list(k=k, b0=b0, b1=b1, b2 = b2)
-#},
-#kk=slider(0, 5, step = 0.01,  initial = 1),
-#b10=slider(0, 0.1, step = 0.000001, initial = 0.001),
-#b20 = slider(0, 0.1, step = 0.00001, initial = 0.05),
-#b00=slider(0,0.8 , step=0.00001,initial= 0.3))
+#Plot
+KL_Plot <- ggplot() #create plot frame
 
-#fit2 <- nls(y ~ k*(exp(-b1*x) + exp(-b2*x)) + b0, start = start, nls.control(maxiter = 1000))
-#summary(fit2)
-#lines(x, fitted(fit2), col="red")
-#anova(fit1, fit2) 
-### NOT USED ###
-##############################################################################
+KL_Plot <- KL_Plot + #add the data points
+  geom_point(aes(x = as.numeric(dat.seq$samp_nos), y = as.numeric(dat.seq$mean_KL))) +
+  xlab("Sample Number") +
+  ylab("KL divergence")
+
+KL_Plot <- KL_Plot + geom_line(aes(x = Pred$samp_nos, y = Pred$Pred_KL), colour = "blue") +
+  scale_y_continuous(limits = c(0, 0.4), breaks = seq(0, 0.4, 0.05)) +
+  scale_x_continuous(limits = c(0, max(cseq)), breaks = seq(0, max(cseq), (max(cseq)/5))) +
+  theme(legend.position = "none") #add the fitted line
+
+KL_Plot
+
+#########################################
+
+#Plot 2 cdf of 1-KL (not normalised)
+x <- dat.seq$samp_nos
+y2 <- 1 - dat.seq$mean_KL
+
+plot(x, y2, xlab="sample number", ylab= "CDF 1-KL")         # Initial plot of the data
+
+#fit 2
+manipulate(
+  {
+    plot(x, y2)
+    k2 <- kk2; b02 <- b002; b12 <- b102
+    curve(k2*exp(-b12*x) + b02, add=TRUE)
+    start <<- list(k2=k2, b02=b02, b12=b12)
+  },
+  kk2=slider(0, 5, step = 0.01,  initial = 2),
+  b102=slider(0, 1, step = 0.000001, initial = 0.01),
+  b002=slider(0,1 , step=0.000001,initial= 0.01))
+
+fit2 <- nls(y2 ~ k2*exp(-b12*x) + b02, start = start)
+summary(fit2) 
+lines(x, fitted(fit2), col="red")
+
+#DF OF PREDICTED CDF VALUES FOR SAMPLE SIZE
+PredCDF <- data.frame(2:(max(cseq)+1))
+PredCDF$samp_nos <- seq(1, max(cseq), 1)
+PredCDF$Pred_CDF <- predict(fit2,list(x=PredCDF$samp_nos))
+PredCDF [1] <- NULL
+
+ConfAchieved <- as.numeric(which(PredCDF$Pred_CDF >= 0.95) [1])
+
+#Plot
+CDF_Plot <- ggplot() #create plot frame
+
+CDF_Plot <- CDF_Plot + #add the data points
+  geom_point(aes(x = as.numeric(dat.seq$samp_nos), y = 1- as.numeric(dat.seq$mean_KL))) +
+  xlab("Sample Number") +
+  ylab("CDF of 1- KL divergence")
+
+CDF_Plot <- CDF_Plot + geom_line(aes(x = PredCDF$samp_nos, y = PredCDF$Pred_CDF), colour = "blue") +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+  scale_x_continuous(limits = c(0, max(cseq)), breaks = seq(0, max(cseq), (max(cseq)/5))) +
+  theme(legend.position = "none") + 
+  geom_hline(yintercept = 0.95, linetype = "dashed", alpha = 0.4, colour = "red") +
+  geom_vline(xintercept = ConfAchieved, linetype = "dashed", alpha = 0.4, colour = "red") +
+  geom_text(aes(x=ConfAchieved, label= paste0(ConfAchieved,"\n"), y=0.2), colour="red", angle=90)
 
 
-#############################################################################
-#Apply fit
-xx<- seq(1, 500,1)
-lines(xx, predict(fit1,list(x=xx)))
+CDF_Plot
 
-jj<- predict(fit1,list(x=xx))
-normalized = 1- (jj-min(jj))/(max(jj)-min(jj))
+##Combine plots to one figure####
+All_Cov_Fig <- ggarrange(KL_Plot, CDF_Plot,
+                         labels = c("A", "B"),
+                         ncol = 1, nrow = 2)
 
-x<- xx
-y<- normalized
-
-plot(x, y, xlab="sample number", ylab= "normalised PIP", type="l", lwd=2)          # Initial plot of the data
-
-x1<- c(-1, 500); y1<- c(0.95, 0.95)
-lines(x1,y1, lwd=2, col="red")
-
-x2<- c(119, 119); y2<- c(0, 1)
-lines(x2,y2, lwd=2, col="red")
-#############################################################################
-
+All_Cov_Fig
+####################################
 ##END
-
-
-
-
-
-
