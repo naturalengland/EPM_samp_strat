@@ -1,16 +1,9 @@
-# Script for determining the optimal number of samples to take using conditioned latin hypercube sampling.
-# Given a suite of covariates this algorithm will assess an optimal number of samples based on a number of metrics.
-# The metrics include:
-# 1. Percentage of gird points within sample PC space
-# 2. Principal component similarity
-# 3. Quantile similarity
-# 4. KL Divergence
-
 
 ######
-# Note that in manuscript only the KL divergence is reported
-# The follow script for each incremental sample size, the sample is repeat 10 times.
-# We do this to look at the dispersion of the results resulting from different sample configurations of the same sample size
+# Based on Malone et al. code.
+# expanded upon to accept both numerical and factor covariates
+# always keep numerical covariates at the start of the dataframe followed by factor covariates
+# changes to code necessary to allow CoV classes to be in any order.
 ######
 
 
@@ -42,7 +35,11 @@ CoV_SupGeo <- stack(lapply(list.files(path = "./AlignedRasters",
                                    pattern = paste0("*SupGeo_SW.tif$"), 
                                    full.names = T), raster))
 
-CoV_All <- stack(CoV_SAR, CoV_DTM, CoV_Slope, CoV_PSL, CoV_SupGeo) #RasterStack of All of the CoVariates
+CoV_BedGeo <- stack(lapply(list.files(path = "./AlignedRasters", 
+                                      pattern = paste0("*BedGeo_SW.tif$"), 
+                                      full.names = T), raster))
+
+CoV_All <- stack(CoV_SAR, CoV_DTM, CoV_Slope, CoV_PSL, CoV_SupGeo, CoV_BedGeo) #RasterStack of All of the CoVariates
 
 #########################################
 #Check all covariates are loaded
@@ -51,12 +48,13 @@ names(CoV_All)
 #creating a DataFrame of selected Covariates####
 CoV_DF <- as.data.frame(rasterToPoints(CoV_All)) #change the Cov_x layer as required
 CoV_DF$Small_SupGeo_SW <- as.factor(CoV_DF$Small_SupGeo_SW)
+CoV_DF$Small_BedGeo_SW <- as.factor(CoV_DF$Small_BedGeo_SW)
 str(CoV_DF)
 
-CoV_sans_SAR <- subset(CoV_DF, select =c(1,2,6:11))
+CoV_sans_SAR <- subset(CoV_DF, select =c(1,2,6:ncol(CoV_DF)))
 str(CoV_sans_SAR)
 
-CoV_sans_PSL <- subset(CoV_DF, select =c(1:7,11)) #RasterStack No PSL
+CoV_sans_PSL <- subset(CoV_DF, select =c(1:7,11,12)) #RasterStack No PSL
 str(CoV_sans_PSL)
 
 CoV_Slope_Elev <- subset(CoV_DF, select =c(1,2,6,7))
@@ -64,17 +62,33 @@ str(CoV_Slope_Elev)
 
 ####################################################################
 # Data analysis for the population data
+#create a list of the factor covs
+fac_CoV_list <- as.list(names(CoV_DF)[sapply(CoV_DF, is.factor)])
 
-####USED for KL ####
-#Quantiles of the population (this is for test 3)
+#return the position of those columns within the DF
+fac_CoV_cols <- unlist(lapply(fac_CoV_list, function(x) which(colnames(CoV_DF) == x)))
+
+#create a list of the numerical covs
+num_CoV_list <- as.list(names(CoV_DF)[sapply(CoV_DF, is.numeric)])[-c(1,2)]
+
+#return the position of those columns within the DF
+num_CoV_cols <- unlist(lapply(num_CoV_list, function(x) which(colnames(CoV_DF) == x)))
+
+#useful variables, each self explanatory.
+no_CoV <- length(names(CoV_DF))-2 #account for removal of x y.
+no_cont <- length(names(CoV_DF)[sapply(CoV_DF, is.numeric)])-2 #account for removal of x y.
+no_factors <- length(names(CoV_DF)[sapply(CoV_DF, is.factor)])
+max_levels <- max(sapply(seq(1, ncol(CoV_DF)), 
+                         function(x) {length(levels(CoV_DF[,x]))}))
+fac_levels <- lapply(fac_CoV_list, function(x) length(levels(CoV_DF[,x])))
 
 # Number of bins
 nb <- 25
-
-#quantile matrix (of the covariate data)
-q.mat<- matrix(NA, nrow=(nb+1), ncol= 9) #amended col to account for no. CoV.
+############################################
+##creating a quantile matrix for continuous vars
+q.mat<- matrix(NA, nrow=(nb+1), ncol= no_cont) 
 j=1
-for (i in 3:ncol(CoV_DF)){ #note the index start here
+for (i in num_CoV_cols){ #note the index start here
   #get a quantile matrix together of the covariates
   ran1<- max(CoV_DF[,i]) - min(CoV_DF[,i])
   step1<- ran1/nb 
@@ -82,12 +96,26 @@ for (i in 3:ncol(CoV_DF)){ #note the index start here
   j<- j+1}
 q.mat
 
+############################################
+#creating a matrix for the factor CoVs
+fac.mat<- matrix(NA, nrow= max_levels, ncol= no_factors)
+j=1
+for (i in 1:length(fac_levels)){ #return the col. number of each factor variable
+  fac.mat[1:fac_levels[[j]],j] <- as.numeric(levels
+                            (subset(CoV_DF, select = fac_CoV_cols)[,i])) # print the levels of each factor into the matrix
+  j<- j+1}
+
+fac.mat
+
+fac_levels[[1]]
+
+############################################
 #covariate data hypercube (this is for test 4)
 ## This takes a while to do so only do it once if you can < This really does take a long time.
-cov.mat<- matrix(1, nrow=nb, ncol=9)
-for (i in 1:nrow(CoV_DF)){ # the number of pixels
+cov.mat<- matrix(1, nrow=nb, ncol=no_cont)
+for (i in 1:nrow(CoV_DF)){ # the number of pixels 
   cntj<- 1 
-  for (j in 3:ncol(CoV_DF)){ #for each column #SHOULD WE ACTUALLY LEAVE IN THE X AND Y TO MAKE IT SPATIALLY EXPLICIT?
+  for (j in num_CoV_cols){ #for each column
     dd<- CoV_DF[i,j]  
     for (k in 1:nb){  #for each quantile
       kl<- q.mat[k, cntj] 
@@ -99,6 +127,25 @@ for (i in 1:nrow(CoV_DF)){ # the number of pixels
 }
 
 cov.mat
+
+############################################
+#this produces a new covariate matrix for the factor covariates.
+fac.cov.mat<- matrix(1, 
+                     nrow = max_levels,
+                     ncol = no_factors)
+for (i in 1:nrow(CoV_DF)){ # the number of pixels 
+  cntj<- 1 
+  for (j in fac_CoV_cols){ #for each column that contains a factor covariate
+    dd<- CoV_DF[i,j]  
+    for (k in 1:length(levels(CoV_DF[,j]))){  #for each variable, the number of buckets (levels)
+      kl<- fac.mat[k, cntj] 
+      if (dd == kl){fac.cov.mat[k, cntj]<- fac.cov.mat[k, cntj] + 1} #add 1 to the count if the value is equal to the bucket (level)
+    }
+    cntj<- cntj+1
+  }
+}
+fac.cov.mat
+############################################
 ####################################################################
 
 
@@ -110,7 +157,7 @@ cov.mat
 #beginning of algorithm
 
 #initial settings
-cseq<- seq(50,500,50) # cLHC sample size, (beginning, end, step)
+cseq<- seq(100,500,50) # cLHC sample size, (beginning, end, step)
 its.clhs <- 10 #number of iterations within clhs
 its<-5  # number internal iterations with each sample size number
 mat.seq<- matrix(NA,ncol=2,nrow=length(cseq)) #empty matrix for outputs
@@ -128,53 +175,83 @@ for (w in 1:length(cseq)){ # for every sample number configuration....
     repeat{
       start.rpt <- Sys.time()
       ss <- clhs(CoV_DF, size = s.size, progress = T, iter = its.clhs) # Do a conditioned latin hypercube sample
-      s.CoV_DF<- CoV_DF[ss,]
+      s.CoV_DF<- CoV_DF[ss,] #select the row numbers output by clhs from the cov.
       print(paste("time to calculate hypercube = ", lubridate::as.duration(Sys.time() - start.rpt)))
       if (sum(duplicated(s.CoV_DF) | duplicated(s.CoV_DF[nrow(s.CoV_DF):1, ])[nrow(s.CoV_DF):1]) < 2)
       {break}}
     
-
+    ############################################
     ## Fourth test: Kullback-Leibler (KL) divergence####
     ####Compare whole study area covariate space with the slected sample
     #sample data hypercube (essentially the same script as for the grid data but just doing it on the sample data)
+
+    h.mat<- matrix(1, nrow=nb, ncol=no_cont)
     
-    h.mat<- matrix(1, nrow=nb, ncol=9)
-    
-    for (ii in 1:nrow(s.CoV_DF)){ # the number of observations
+    for (ii in 1:nrow(s.CoV_DF)){ # the number of pixels in sample
       cntj<- 1 
-      for (jj in 3:ncol(s.CoV_DF)){ #for each column
-        dd<- s.CoV_DF[ii,jj]  
+      for (jj in num_CoV_cols){ #for each column of cont (numeric) vars.
+        dd<- s.CoV_DF[ii,jj]
         for (kk in 1:nb){  #for each quantile
           kl<- q.mat[kk, cntj] 
           ku<- q.mat[kk+1, cntj] 
-          if (dd >= kl & dd <= ku){h.mat[kk, cntj]<- h.mat[kk, cntj] + 1}
+          if (dd >= kl & dd <= ku){h.mat[kk, cntj]<- h.mat[kk, cntj] + 1} 
         }
-        cntj<- cntj+1}}
+        cntj<- cntj+1
+      }
+    }
     
-    #h.mat 
+    h.mat
+    
+    ############################################
+    #this produces a new covariate matrix for the factor covariates.
+    h.fac.mat<- matrix(1, 
+                         nrow = max_levels,
+                         ncol = no_factors)
+    for (iii in 1:nrow(s.CoV_DF)){ # the number of pixels in sample
+      cntj<- 1 
+      for (jjj in fac_CoV_cols){ #for each column
+        dd<- s.CoV_DF[iii,jjj]  #get the value of each in covariate for each sample
+        for (kkk in 1:length(levels(s.CoV_DF[,jjj]))){  #for each variable the number of buckets (levels)
+          kl<- fac.mat[kkk, cntj] 
+          if (dd == kl){h.fac.mat[kkk, cntj]<- h.fac.mat[kkk, cntj] + 1} 
+        }
+        cntj<- cntj+1
+      }
+    }
+    h.fac.mat
+    
+    ############################################ TO HERE>
+    
     #Kullback-Leibler (KL) divergence
-    klo.1<- KL.empirical(c(cov.mat[,1]), c(h.mat[,1])) #1
-    klo.2<- KL.empirical(c(cov.mat[,2]), c(h.mat[,2])) #2
-    klo.3<- KL.empirical(c(cov.mat[,3]), c(h.mat[,3])) #3
-    klo.4<- KL.empirical(c(cov.mat[,4]), c(h.mat[,4])) #4
-    klo.5<- KL.empirical(c(cov.mat[,5]), c(h.mat[,5])) #5
-    klo.6<- KL.empirical(c(cov.mat[,6]), c(h.mat[,6])) #6
-    klo.7<- KL.empirical(c(cov.mat[,7]), c(h.mat[,7])) #7
-    klo.8<- KL.empirical(c(cov.mat[,8]), c(h.mat[,8])) #8
-    klo.9<- KL.empirical(c(cov.mat[,9]), c(h.mat[,9])) #9
-
-    klo<- mean(c(klo.1, klo.2,klo.3,klo.4,klo.5,klo.6,klo.7,klo.8,klo.9))
-    mat.f[j,2]<- klo  # value of 0 means no divergence
-    print(paste("KL divergence =", klo))
-  } 
+    #
+    klo.v <- c() #empty vector for covar results
+    for (iiii in num_CoV_cols){
+      x <- iiii -2
+      klo.v <- c(klo.v, #bind following result to vector
+                 KL.empirical(c(cov.mat[,x]), c(h.mat[,x]))) #loop for numerical  
+    }
+    
+    for (jjjj in fac_CoV_cols) {
+      x <- (jjjj-no_cont)-2
+      klo.v <- c(klo.v, #bind following result to vector
+                 KL.empirical(c(fac.cov.mat[1:fac_levels[[x]],x]),
+                              c(h.fac.mat[1:fac_levels[[x]],x]))) #loop for factors, comparing only the levels of data not additional rows in matrix.
+    }
   
+  
+  klo<- mean(klo.v)
+  mat.f[j,2]<- klo  # value of 0 means no divergence
+  print(paste("KL divergence =", klo))
+  }
+
   
   #arrange outputs
   mat.seq[w,1]<-mean(mat.f[,2])
   mat.seq[w,2]<-sd(mat.f[,2])} ## END of LOOP
 
-dat.seq<- as.data.frame(cbind(cseq,mat.seq))
+dat.seq<- as.data.frame(cbind(cseq,mat.seq)) #writes the number of samples next to the outputs
 names(dat.seq)<- c("samp_nos","mean_KL","sd_KL")
+dat.seq
 ##########################################################
 
 
@@ -208,7 +285,7 @@ manipulate(
   },
   kk=slider(0, 5, step = 0.01,  initial = 2),
   b10=slider(0, 1, step = 0.000001, initial = 0.01),
-  b00=slider(0,1 , step=0.000001,initial= 0.01))
+  b00=slider(0, 1, step=0.000001,initial= 0.01))
 
 fit1 <- nls(y ~ k*exp(-b1*x) + b0, start = start)
 summary(fit1) 
