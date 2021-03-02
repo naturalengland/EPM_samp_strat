@@ -174,7 +174,7 @@ for (w in 1:length(cseq)){ # for every sample number configuration....
     print(paste("iteration", j, "of", its))
     repeat{
       start.rpt <- Sys.time()
-      ss <- clhs(CoV_DF, size = s.size, progress = T, iter = its.clhs) # Do a conditioned latin hypercube sample
+      ss <- clhs(CoV_DF[,3:no_CoV], size = s.size, progress = T, iter = its.clhs) # Do a conditioned latin hypercube sample
       s.CoV_DF<- CoV_DF[ss,] #select the row numbers output by clhs from the cov.
       print(paste("time to calculate hypercube = ", lubridate::as.duration(Sys.time() - start.rpt)))
       if (sum(duplicated(s.CoV_DF) | duplicated(s.CoV_DF[nrow(s.CoV_DF):1, ])[nrow(s.CoV_DF):1]) < 2)
