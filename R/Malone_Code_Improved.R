@@ -7,36 +7,41 @@
 ######
 
 
-library(raster);library(rgdal);library(tripack);library(SDMTools); library(manipulate);library(clhs);library(entropy);library(ggplot2);library(ggpubr)
+library(raster);library(rgdal);library(tripack);#library(SDMTools); 
+library(manipulate);library(clhs);library(entropy);library(ggplot2);
+library(ggpubr);library(openxlsx)
 
 setwd("E:/Natural England/Peatland/EPM_samp_strat/") # set your working directory as appropriate
 
 #setwd("")
 
+#Automation, for a more powerful computer/ cloud?
+for (BGZ in 1:3) { #this will be 14 when we run this properly
+
 #generate Dataframe of covariates
 ####create stacks of Covariates & groups of Covariates####
-CoV_SAR <- stack(lapply(list.files(path = "./data",
-                                   pattern = paste0("*SAR.tif$"),
+CoV_SAR <- stack(lapply(list.files(path = "./data/Test",
+                                   pattern = paste0("SAR_", BGZ,".tif$"),
                                    full.names = T), brick))
 
-CoV_DTM <- stack(lapply(list.files(path = "./data",
-                                   pattern = paste0("*DTM.tif$"), 
+CoV_DTM <- stack(lapply(list.files(path = "./data/Test",
+                                   pattern = paste0("DTM_", BGZ,".tif$"), 
                                    full.names = T), raster))
 
-CoV_Slope <- stack(lapply(list.files(path = "./data",
-                                     pattern = paste0("*Slope.tif$"), 
+CoV_Slope <- stack(lapply(list.files(path = "./data/Test",
+                                     pattern = paste0("Slope_", BGZ,".tif$"), 
                                      full.names = T), raster))
 
-CoV_PSL <- stack(lapply(list.files(path = "./data",
-                                   pattern = paste0("*PSL.tif$"), 
+CoV_PSL <- stack(lapply(list.files(path = "./data/Test",
+                                   pattern = paste0("PSL_", BGZ,".tif$"), 
                                    full.names = T), brick))
 
-CoV_SupGeo <- stack(lapply(list.files(path = "./data",
-                                      pattern = paste0("*SupGeo.tif$"), 
+CoV_SupGeo <- stack(lapply(list.files(path = "./data/Test",
+                                      pattern = paste0("SupGeo_", BGZ,".tif$"),
                                       full.names = T), raster))
 
-CoV_BedGeo <- stack(lapply(list.files(path = "./data",
-                                      pattern = paste0("*Bed_Geo.tif$"), 
+CoV_BedGeo <- stack(lapply(list.files(path = "./data/Test",
+                                      pattern = paste0("BedGeo_", BGZ,".tif$"), 
                                       full.names = T), raster))
 
 CoV_All <- stack(CoV_SAR, CoV_DTM, CoV_Slope, CoV_PSL, CoV_SupGeo, CoV_BedGeo) #RasterStack of All of the CoVariates
@@ -51,13 +56,16 @@ CoV_DF[, grep("SupGeo", colnames(CoV_DF))] <- as.factor(CoV_DF[, grep("SupGeo", 
 CoV_DF[, grep("Bed", colnames(CoV_DF))] <- as.factor(CoV_DF[, grep("Bed", colnames(CoV_DF))])
 str(CoV_DF)
 
-CoV_sans_SAR <- subset(CoV_DF, select =c(1,2,6:ncol(CoV_DF)))
+#select everything but SAR
+CoV_sans_SAR <- CoV_DF[, -grep("SAR_...$", names(CoV_DF))]
 str(CoV_sans_SAR)
 
-CoV_sans_PSL <- subset(CoV_DF, select =c(1:7,11,12)) #RasterStack No PSL
+#select everything but PSL
+CoV_sans_PSL <- CoV_DF[, -grep("PSL_...$", names(CoV_DF))]
 str(CoV_sans_PSL)
 
-CoV_Slope_Elev <- subset(CoV_DF, select =c(1,2,6,7))
+#select only slope & DTM
+CoV_Slope_Elev <- CoV_DF[, grep("^x$|^y$|Slope|DTM", names(CoV_DF))]
 str(CoV_Slope_Elev)
 
 ####################################################################
@@ -94,6 +102,9 @@ for (i in num_CoV_cols){ #note the index start here
   step1<- ran1/nb 
   q.mat[,j]<- seq(min(CoV_DF[,i]), to = max(CoV_DF[,i]), by =step1)
   j<- j+1}
+
+colnames(q.mat)<- c(num_CoV_list)
+
 q.mat
 
 ############################################
@@ -105,9 +116,7 @@ for (i in 1:length(fac_levels)){ #return the col. number of each factor variable
                                              (subset(CoV_DF, select = fac_CoV_cols)[,i])) # print the levels of each factor into the matrix
   j<- j+1}
 
-fac.mat
-
-fac_levels[[1]]
+colnames(fac.mat)<- c(fac_CoV_list)
 
 ############################################
 #covariate data hypercube (this is for test 4)
@@ -126,7 +135,7 @@ for (i in 1:nrow(CoV_DF)){ # the number of pixels
   }
 }
 
-cov.mat
+colnames(cov.mat)<- c(num_CoV_list)
 
 ############################################
 #this produces a new covariate matrix for the factor covariates.
@@ -144,20 +153,55 @@ for (i in 1:nrow(CoV_DF)){ # the number of pixels
     cntj<- cntj+1
   }
 }
+
+colnames(fac.cov.mat)<- c(fac_CoV_list)
 fac.cov.mat
 ############################################
 ####################################################################
+#list of dataframes which contain only the selected Covariates 
+CoVGroups <- list(CoV_DF, CoV_sans_SAR, CoV_sans_PSL, CoV_Slope_Elev)
+
+for (Group in 1:length(CoVGroups)) {
+#redefine the variables:
+fac_CoV_list <- as.list(names(CoVGroups[[Group]])[sapply(CoVGroups[[Group]], is.factor)])
+
+#return the position of those columns within the original DF
+fac_CoV_cols <- unlist(lapply(fac_CoV_list, function(x) which(colnames(CoVGroups[[Group]]) == x)))
+
+#return the position of those columns within the original matrices
+columnInFMat <- unlist(lapply(fac_CoV_cols, function(x) x-2))
 
 
+#create a list of the numerical covs
+num_CoV_list <- as.list(names(CoVGroups[[Group]])[sapply(CoVGroups[[Group]], is.numeric)])[-c(1,2)]
+#return the position of those columns within the original DF
+num_CoV_cols <- unlist(lapply(num_CoV_list, function(x) which(colnames(CoVGroups[[Group]]) == x)))
+
+#return the position of those columns within the original matrices
+
+#useful variables, each self explanatory.
+no_CoV <- length(names(CoVGroups[[Group]]))-2 #account for removal of x y.
+no_cont <- length(names(CoVGroups[[Group]])[sapply(CoVGroups[[Group]], is.numeric)])-2 #account for removal of x y.
+no_factors <- length(names(CoVGroups[[Group]])[sapply(CoVGroups[[Group]], is.factor)])
+max_levels <- max(sapply(seq(1, ncol(CoVGroups[[Group]])), 
+                         function(x) {length(levels(CoVGroups[[Group]][,x]))}))
+fac_levels <- lapply(fac_CoV_list, function(x) length(levels(CoVGroups[[Group]][,x])))
+
+#which columns to take forward
 
 
+#remove the columns from these that do not apply to the group
+q.mat.gr <- q.mat[, grepl(paste0(names(CoVGroups[[Group]]), collapse = "$|^"), colnames(q.mat))]
+fac.mat.gr <- fac.mat[, grepl(paste0(names(CoVGroups[[Group]]), collapse = "$|^"), colnames(fac.mat))]
+cov.mat.gr <- cov.mat[, grepl(paste0(names(CoVGroups[[Group]]), collapse = "$|^"), colnames(cov.mat))]
+fac.cov.mat.gr <- fac.cov.mat[, grepl(paste0(names(CoVGroups[[Group]]), collapse = "$|^"), colnames(fac.cov.mat))]
 
 #######################################################################
 #How many samples do we need?
 #beginning of algorithm
 
 #initial settings
-cseq<- seq(100,500,10) # cLHC sample size, (beginning, end, step)
+cseq<- seq(100,500,50) # cLHC sample size, (beginning, end, step)
 its.clhs <- 10 #number of iterations within clhs
 its<-5  # number internal iterations with each sample size number
 mat.seq<- matrix(NA,ncol=2,nrow=length(cseq)) #empty matrix for outputs
@@ -174,8 +218,8 @@ for (w in 1:length(cseq)){ # for every sample number configuration....
     print(paste("iteration", j, "of", its))
     repeat{
       start.rpt <- Sys.time()
-      ss <- clhs(CoV_DF, size = s.size, progress = T, iter = its.clhs) # Do a conditioned latin hypercube sample
-      s.CoV_DF<- CoV_DF[ss,] #select the row numbers output by clhs from the cov.
+      ss <- clhs(CoVGroups[[Group]][,3:no_CoV], size = s.size, progress = T, iter = its.clhs) # Do a conditioned latin hypercube sample
+      s.CoV_DF<- CoVGroups[[Group]][ss,] #select the row numbers output by clhs from the cov.
       print(paste("time to calculate hypercube = ", lubridate::as.duration(Sys.time() - start.rpt)))
       if (sum(duplicated(s.CoV_DF) | duplicated(s.CoV_DF[nrow(s.CoV_DF):1, ])[nrow(s.CoV_DF):1]) < 2)
       {break}}
@@ -192,18 +236,21 @@ for (w in 1:length(cseq)){ # for every sample number configuration....
       for (jj in num_CoV_cols){ #for each column of cont (numeric) vars.
         dd<- s.CoV_DF[ii,jj]
         for (kk in 1:nb){  #for each quantile
-          kl<- q.mat[kk, cntj] 
-          ku<- q.mat[kk+1, cntj] 
+          kl<- q.mat.gr[kk, cntj] 
+          ku<- q.mat.gr[kk+1, cntj] 
           if (dd >= kl & dd <= ku){h.mat[kk, cntj]<- h.mat[kk, cntj] + 1} 
         }
         cntj<- cntj+1
       }
     }
     
+    colnames(h.mat)<- c(num_CoV_list)
+    
     h.mat
     
     ############################################
     #this produces a new covariate matrix for the factor covariates.
+    
     h.fac.mat<- matrix(1, 
                        nrow = max_levels,
                        ncol = no_factors)
@@ -212,14 +259,15 @@ for (w in 1:length(cseq)){ # for every sample number configuration....
       for (jjj in fac_CoV_cols){ #for each column
         dd<- s.CoV_DF[iii,jjj]  #get the value of each in covariate for each sample
         for (kkk in 1:length(levels(s.CoV_DF[,jjj]))){  #for each variable the number of buckets (levels)
-          kl<- fac.mat[kkk, cntj] 
+          kl<- fac.mat.gr[kkk, cntj] 
           if (dd == kl){h.fac.mat[kkk, cntj]<- h.fac.mat[kkk, cntj] + 1} 
         }
         cntj<- cntj+1
       }
     }
-    h.fac.mat
     
+    h.fac.mat
+   
     ############################################ TO HERE>
     
     #Kullback-Leibler (KL) divergence
@@ -228,13 +276,13 @@ for (w in 1:length(cseq)){ # for every sample number configuration....
     for (iiii in num_CoV_cols){
       x <- iiii -2
       klo.v <- c(klo.v, #bind following result to vector
-                 KL.empirical(c(cov.mat[,x]), c(h.mat[,x]))) #loop for numerical  
+                 KL.empirical(c(cov.mat.gr[,x]), c(h.mat[,x]))) #loop for numerical  
     }
     
     for (jjjj in fac_CoV_cols) {
       x <- (jjjj-no_cont)-2
       klo.v <- c(klo.v, #bind following result to vector
-                 KL.empirical(c(fac.cov.mat[1:fac_levels[[x]],x]),
+                 KL.empirical(c(fac.cov.mat.gr[1:fac_levels[[x]],x]),
                               c(h.fac.mat[1:fac_levels[[x]],x]))) #loop for factors, comparing only the levels of data not additional rows in matrix.
     }
     
@@ -370,4 +418,61 @@ All_Cov_Fig <- ggarrange(KL_Plot, CDF_Plot,
 
 All_Cov_Fig
 ####################################
+
+wb <- createWorkbook()
+
+addWorksheet(wb, "q.mat.gr")
+writeData(wb, sheet = "q.mat.gr", rowNames = TRUE, colNames = TRUE, x = q.mat.gr)
+
+addWorksheet(wb, "fac.mat.gr")
+writeData(wb, sheet = "fac.mat.gr", rowNames = TRUE, colNames = TRUE, x = fac.mat.gr)
+
+addWorksheet(wb, "cov.mat.gr")
+writeData(wb, sheet = "cov.mat.gr", rowNames = TRUE, colNames = TRUE, x = cov.mat.gr)
+
+addWorksheet(wb, "fac.cov.mat.gr")
+writeData(wb, sheet = "fac.cov.mat.gr", rowNames = TRUE, colNames = TRUE, x = fac.cov.mat.gr)
+
+addWorksheet(wb, "h.mat")
+writeData(wb, sheet = "h.mat", rowNames = TRUE, colNames = TRUE, x = h.mat)
+
+addWorksheet(wb, "h.fac.mat")
+writeData(wb, sheet = "h.fac.mat", rowNames = TRUE, colNames = TRUE, x = h.fac.mat)
+
+addWorksheet(wb, "dat.seq")
+writeData(wb, sheet = "dat.seq", rowNames = TRUE, colNames = TRUE, x = dat.seq)
+
+addWorksheet(wb, "ConfAchieved")
+writeData(wb, sheet = "ConfAchieved", x = ConfAchieved)
+
+saveWorkbook(wb, file=paste0("E:/Natural England/Peatland/Test/ModelOutputs/",BGZ,"/Group ",Group,"/BGZ_",BGZ,"_",Group,".xlsx"))
+
+# 1. Openfile
+png(file=paste0("E:/Natural England/Peatland/Test/ModelOutputs/",BGZ,"/Group ",Group,"/BGZ_",BGZ,"_",Group,".png")
+     )
+
+# 2. Create the plot
+plot(All_Cov_Fig)
+
+# 3. Close the file
+dev.off()
+
+
+# 1. Open file
+pdf(file=paste0("E:/Natural England/Peatland/Test/ModelOutputs/",BGZ,"/Group ",Group,"/BGZ_",BGZ,"_",Group,".pdf"), 
+                 width = 10, 
+                 height = 8
+                 )
+# 2. Create the plot
+plot(All_Cov_Fig)
+
+# 3. Close the file
+dev.off()
+
+}
+
+
+}
+
+
 ##END
