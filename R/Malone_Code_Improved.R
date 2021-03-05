@@ -16,7 +16,9 @@ setwd("E:/Natural England/Peatland/EPM_samp_strat/") # set your working director
 #setwd("")
 
 #Automation, for a more powerful computer/ cloud?
-for (BGZ in 1:3) { #this will be 14 when we run this properly
+#for (BGZ in 1:3) { #this will be 14 when we run this properly
+
+BGZ < -1 #usually comment this out!
 
 #generate Dataframe of covariates
 ####create stacks of Covariates & groups of Covariates####
@@ -159,40 +161,46 @@ fac.cov.mat
 ############################################
 ####################################################################
 #list of dataframes which contain only the selected Covariates 
-CoVGroups <- list(CoV_DF, CoV_sans_SAR, CoV_sans_PSL, CoV_Slope_Elev)
+#CoVGroups <- list(CoV_DF, CoV_sans_SAR, CoV_sans_PSL, CoV_Slope_Elev)
 
-for (Group in 1:length(CoVGroups)) {
-#redefine the variables:
-fac_CoV_list <- as.list(names(CoVGroups[[Group]])[sapply(CoVGroups[[Group]], is.factor)])
 
-#return the position of those columns within the original DF
-fac_CoV_cols <- unlist(lapply(fac_CoV_list, function(x) which(colnames(CoVGroups[[Group]]) == x)))
+# for (Group in 1:length(CoVGroups)) {
+# #redefine the variables:
+# fac_CoV_list <- as.list(names(CoVGroups[[Group]])[sapply(CoVGroups[[Group]], is.factor)])
+# 
+# #return the position of those columns within the original DF
+# fac_CoV_cols <- unlist(lapply(fac_CoV_list, function(x) which(colnames(CoVGroups[[Group]]) == x)))
+# 
+# #return the position of those columns within the original matrices
+# columnInFMat <- unlist(lapply(fac_CoV_cols, function(x) x-2))
+# 
+# #create a list of the numerical covs
+# num_CoV_list <- as.list(names(CoVGroups[[Group]])[sapply(CoVGroups[[Group]], is.numeric)])[-c(1,2)]
+# #return the position of those columns within the original DF
+# num_CoV_cols <- unlist(lapply(num_CoV_list, function(x) which(colnames(CoVGroups[[Group]]) == x)))
+# 
+# #return the position of those columns within the original matrices
+# 
+# #useful variables, each self explanatory.
+# no_CoV <- length(names(CoVGroups[[Group]]))-2 #account for removal of x y.
+# no_cont <- length(names(CoVGroups[[Group]])[sapply(CoVGroups[[Group]], is.numeric)])-2 #account for removal of x y.
+# no_factors <- length(names(CoVGroups[[Group]])[sapply(CoVGroups[[Group]], is.factor)])
+# max_levels <- max(sapply(seq(1, ncol(CoVGroups[[Group]])),
+#                          function(x) {length(levels(CoVGroups[[Group]][,x]))}))
+# fac_levels <- lapply(fac_CoV_list, function(x) length(levels(CoVGroups[[Group]][,x])))
+# 
+# #remove the columns from these that do not apply to the group
+# q.mat.gr <- q.mat[, grepl(paste0(names(CoVGroups[[Group]]), collapse = "$|^"), colnames(q.mat))]
+# fac.mat.gr <- fac.mat[, grepl(paste0(names(CoVGroups[[Group]]), collapse = "$|^"), colnames(fac.mat))]
+# cov.mat.gr <- cov.mat[, grepl(paste0(names(CoVGroups[[Group]]), collapse = "$|^"), colnames(cov.mat))]
+# fac.cov.mat.gr <- fac.cov.mat[, grepl(paste0(names(CoVGroups[[Group]]), collapse = "$|^"), colnames(fac.cov.mat))]
 
-#return the position of those columns within the original matrices
-columnInFMat <- unlist(lapply(fac_CoV_cols, function(x) x-2))
 
-#create a list of the numerical covs
-num_CoV_list <- as.list(names(CoVGroups[[Group]])[sapply(CoVGroups[[Group]], is.numeric)])[-c(1,2)]
-#return the position of those columns within the original DF
-num_CoV_cols <- unlist(lapply(num_CoV_list, function(x) which(colnames(CoVGroups[[Group]]) == x)))
-
-#return the position of those columns within the original matrices
-
-#useful variables, each self explanatory.
-no_CoV <- length(names(CoVGroups[[Group]]))-2 #account for removal of x y.
-no_cont <- length(names(CoVGroups[[Group]])[sapply(CoVGroups[[Group]], is.numeric)])-2 #account for removal of x y.
-no_factors <- length(names(CoVGroups[[Group]])[sapply(CoVGroups[[Group]], is.factor)])
-max_levels <- max(sapply(seq(1, ncol(CoVGroups[[Group]])), 
-                         function(x) {length(levels(CoVGroups[[Group]][,x]))}))
-fac_levels <- lapply(fac_CoV_list, function(x) length(levels(CoVGroups[[Group]][,x])))
-
-#which columns to take forward
-
-#remove the columns from these that do not apply to the group
-q.mat.gr <- q.mat[, grepl(paste0(names(CoVGroups[[Group]]), collapse = "$|^"), colnames(q.mat))]
-fac.mat.gr <- fac.mat[, grepl(paste0(names(CoVGroups[[Group]]), collapse = "$|^"), colnames(fac.mat))]
-cov.mat.gr <- cov.mat[, grepl(paste0(names(CoVGroups[[Group]]), collapse = "$|^"), colnames(cov.mat))]
-fac.cov.mat.gr <- fac.cov.mat[, grepl(paste0(names(CoVGroups[[Group]]), collapse = "$|^"), colnames(fac.cov.mat))]
+#made to work for code review this is just maintaining the matrices created above.
+q.mat.gr <- q.mat
+fac.mat.gr <- fac.mat
+cov.mat.gr <- cov.mat
+fac.cov.mat.gr <- fac.cov.mat
 
 #######################################################################
 #How many samples do we need?
@@ -467,10 +475,10 @@ plot(All_Cov_Fig)
 # 3. Close the file
 dev.off()
 
-}
+#}
 
 
-}
+#}
 
 
 ##END
