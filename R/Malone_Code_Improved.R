@@ -171,7 +171,6 @@ fac_CoV_cols <- unlist(lapply(fac_CoV_list, function(x) which(colnames(CoVGroups
 #return the position of those columns within the original matrices
 columnInFMat <- unlist(lapply(fac_CoV_cols, function(x) x-2))
 
-
 #create a list of the numerical covs
 num_CoV_list <- as.list(names(CoVGroups[[Group]])[sapply(CoVGroups[[Group]], is.numeric)])[-c(1,2)]
 #return the position of those columns within the original DF
@@ -188,7 +187,6 @@ max_levels <- max(sapply(seq(1, ncol(CoVGroups[[Group]])),
 fac_levels <- lapply(fac_CoV_list, function(x) length(levels(CoVGroups[[Group]][,x])))
 
 #which columns to take forward
-
 
 #remove the columns from these that do not apply to the group
 q.mat.gr <- q.mat[, grepl(paste0(names(CoVGroups[[Group]]), collapse = "$|^"), colnames(q.mat))]
