@@ -1,10 +1,7 @@
 ######
 # Based on Malone et al. code.
-# expanded upon to accept both numerical and factor covariates
-# always keep numerical covariates at the start of the dataframe followed by factor covariates
-# changes to code necessary to allow CoV classes to be in any order.
+# change directories to which outputs are saved on lines 504, 581, 585, 596
 ######
-
 
 library(raster);library(rgdal);library(tripack);#library(SDMTools); 
 library(manipulate);library(clhs);library(entropy);library(ggplot2);
@@ -16,34 +13,34 @@ library(ggpubr);library(openxlsx); library(plyr)
 setwd("../data")
 
 #Automation, for a more powerful computer/ cloud?
-for (BGZ in c(1:14)) { #this will be 14 when we run this properly
-  BGZ.St <- Sys.time()
-  print(paste0("Starting Analysis of BGZ ",BGZ))
+for (BGZ in c(1:14)) {  #for each BGZ - SET TO 1-3 FOR LOOP TEST WITH SAMPLE DATA
+  BGZ.St <- Sys.time()  #note system time for time/BGZ print outs.
+  print(paste0("Starting Analysis of BGZ ", BGZ))
   #BGZ <- 2 #usually comment this out!
 
   #generate Dataframe of covariates
   ####create stacks of Covariates & groups of Covariates####
-  CoV_SAR <- stack(lapply(list.files(path = "./AlignedNationWide",
+  CoV_SAR <- stack(lapply(list.files(path = "./ModelInputs",
                                      pattern = paste0("SAR_", BGZ,".tif$"),
                                      full.names = T, recursive = T), brick))
   
-  CoV_DTM <- stack(lapply(list.files(path = "./AlignedNationWide",
+  CoV_DTM <- stack(lapply(list.files(path = "./ModelInputs",
                                      pattern = paste0("DTM_", BGZ,".tif$"), 
                                      full.names = T, recursive = T), raster))
   
-  CoV_Slope <- stack(lapply(list.files(path = "./AlignedNationWide",
+  CoV_Slope <- stack(lapply(list.files(path = "./ModelInputs",
                                        pattern = paste0("Slope_", BGZ,".tif$"), 
                                        full.names = T, recursive = T), raster))
   
-  CoV_PSL <- stack(lapply(list.files(path = "./AlignedNationWide",
+  CoV_PSL <- stack(lapply(list.files(path = "./ModelInputs",
                                      pattern = paste0("PSL_", BGZ,".tif$"),
                                      full.names = T, recursive = T), brick))
   
-  CoV_SupGeo <- stack(lapply(list.files(path = "./AlignedNationWide",
+  CoV_SupGeo <- stack(lapply(list.files(path = "./ModelInputs",
                                         pattern = paste0("SupGeo_", BGZ,".tif$"),
                                         full.names = T, recursive = T), raster))
   
-  CoV_BedGeo <- stack(lapply(list.files(path = "./AlignedNationWide",
+  CoV_BedGeo <- stack(lapply(list.files(path = "./ModelInputs",
                                         pattern = paste0("BedGeo_", BGZ,".tif$"), 
                                         full.names = T, recursive = T), raster))
   
@@ -64,6 +61,7 @@ no_uniques <- function(vec) length(unique(na.omit(vec))) > 1
 CoV_DF <- CoV_DF[,sapply(CoV_DF,no_uniques)]
 str(CoV_DF)
 
+# #Currently unused but if we want to exclude certain CoVs can be used.
 # #select everything but SAR
 # CoV_sans_SAR <- CoV_DF[, -grep("SAR_...$", names(CoV_DF))]
 # 
@@ -79,18 +77,20 @@ str(CoV_DF)
 fac_CoV_list <- as.list(names(CoV_DF)[sapply(CoV_DF, is.factor)])
 
 #return the position of those columns within the DF
-fac_CoV_cols <- unlist(lapply(fac_CoV_list, function(x) which(colnames(CoV_DF) == x)))
+fac_CoV_cols <- unlist(lapply(fac_CoV_list,
+                              function(x) which(colnames(CoV_DF) == x)))
 
 #create a list of the numerical covs
 num_CoV_list <- as.list(names(CoV_DF)[sapply(CoV_DF, is.numeric)])[-c(1,2)]
 
 #return the position of those columns within the DF
-num_CoV_cols <- unlist(lapply(num_CoV_list, function(x) which(colnames(CoV_DF) == x)))
+num_CoV_cols <- unlist(lapply(num_CoV_list,
+                              function(x) which(colnames(CoV_DF) == x)))
 
 #useful variables, each self explanatory.
-no_CoV <- length(names(CoV_DF))-2 #account for removal of x y.
-no_cont <- length(names(CoV_DF)[sapply(CoV_DF, is.numeric)])-2 #account for removal of x y.
-no_factors <- length(names(CoV_DF)[sapply(CoV_DF, is.factor)])
+no_CoV <- length(names(CoV_DF))-2 #-2 accounts for removal of x y.
+no_cont <- length(names(CoV_DF)[sapply(CoV_DF, is.numeric)])-2 #-2 accounts for removal of x y.
+no_factors <- length(names(CoV_DF)[sapply(CoV_DF, is.factor)]) 
 max_levels <- max(sapply(seq(1, ncol(CoV_DF)), 
                          function(x) {length(levels(CoV_DF[,x]))}))
 fac_levels <- lapply(fac_CoV_list, function(x) length(levels(CoV_DF[,x])))
@@ -105,7 +105,8 @@ for (i in num_CoV_cols){ #note the index start here
   #get a quantile matrix together of the covariates
   ran1<- max(na.omit(CoV_DF[,i])) - min(na.omit(CoV_DF[,i]))
   step1<- ran1/nb 
-  q.mat[,j]<- seq(min(na.omit(CoV_DF[,i])), to = max(na.omit(CoV_DF[,i])), by =step1)
+  q.mat[,j]<- seq(min(na.omit(CoV_DF[,i])),
+                  to = max(na.omit(CoV_DF[,i])), by =step1)
   j<- j+1}
 
 colnames(q.mat)<- c(num_CoV_list)
@@ -116,19 +117,21 @@ fac.mat<- matrix(NA, nrow= max_levels, ncol= no_factors)
 j=1
 for (i in 1:length(fac_levels)){ #return the col. number of each factor variable
   fac.mat[1:fac_levels[[j]],j] <- as.numeric(levels
-                                             (subset(CoV_DF, select = fac_CoV_cols)[,i])) # print the levels of each factor into the matrix
+                                             (subset(CoV_DF, 
+                                                     select = fac_CoV_cols)[,i])) # print the levels of each factor into the matrix
   j<- j+1}
 
 colnames(fac.mat)<- c(fac_CoV_list)
 
 ############################################
-
+#grab just the continuous covariates
 CoVntiles <- CoV_DF[num_CoV_cols]
 
+#create an empty matrix for the counts
 CoV_counts <- data.frame(matrix(NA, nrow = nb, ncol = 0))
 
+#reset variable to ensure loop occurs smoothly & used in testing
 CoV_Col <- 1
-Num_CoV <- 1
 
 for (Num_CoV in 1:no_cont){
 #compute a histogram for the breaks as specified in q.mat
@@ -145,16 +148,14 @@ for (Num_CoV in 1:no_cont){
 CoV_Col <- CoV_Col + 1
 }
 
+#make the dataframe into a matrix
 cov.mat <- as.matrix(CoV_counts+1)
 ##########################################
-
+#grab only the factor/ categorical variables
 Facntiles <- CoV_DF[fac_CoV_cols]
 
 #get the levels of each factor and create a matrix list from them
 Get_levels.m <- matrix(sapply(CoV_DF[fac_CoV_cols], levels), ncol = no_factors, byrow = TRUE)
-
-# #list of levels in the factor
-# Get_levels.m[[1]]
 
 #empty vector for counts
 Fac_counts.v <- c()
@@ -167,30 +168,28 @@ for (f.i in 1:no_factors){
                       levels = Get_levels.m[[f.i]])))[,2]))
 }
 
+#For Output
+fac.cov.mat <- sapply(Fac_counts.v, '[', t(seq(max(sapply(Fac_counts.v, length)))))
 
-# #For Output
-# fac.cov.mat<- matrix(NA, nrow= max_levels, ncol= no_factors)
-# fac.cov.mat.1 <- cbind(unlist(Fac_counts.v[1]))
-# fac.cov.mat.2 <- cbind(unlist(Fac.Counts[2]))
-
-#HACKY FOR TEST
+#This can later be changed to allow us to use groups of variables rather than all at once.
 CoVGroups <- list(CoV_DF)
 Group <- 1
 
-#made to work for code review this is just maintaining the matrices created above.
+#These can later be tied into the different covariate groups, for now idle.
 q.mat.gr <- q.mat
 fac.mat.gr <- fac.mat
 cov.mat.gr <- cov.mat
+fac.cov.mat.gr <- fac.cov.mat
 #######################################################################
 #How many samples do we need?
 #beginning of algorithm
 
 #initial settings
-cseq<- seq(100, 350, 50) # cLHC sample size, (beginning, end, step)
-its.clhs <- 100 #number of iterations within clhs
+cseq<- seq(50, 1000, 50) # cLHC sample size, the max is actually constrained later so set high.
+its.clhs <- 10 #number of iterations within clhs
 its<-5  # number internal iterations with each sample size number
 mat.seq<- matrix(NA,ncol=2,nrow=length(cseq)) #empty matrix for outputs
-mat.f<- matrix(NA,ncol=2,nrow=its ) # placement for iteration outputs
+mat.f<- matrix(NA,ncol=1,nrow=its ) # placement for iteration outputs
 
 
 for (w in 1:length(cseq)){ # for every sample number configuration....
@@ -202,26 +201,29 @@ for (w in 1:length(cseq)){ # for every sample number configuration....
     print(paste("iteration", j, "of", its))
     repeat{
       start.rpt <- Sys.time()
-      ss <- clhs(CoVGroups[[Group]][,3:no_CoV], size = s.size, progress = T, iter = its.clhs) # Do a conditioned latin hypercube sample
+      ss <- clhs(CoVGroups[[Group]][,3:no_CoV], 
+                 size = s.size, progress = T, iter = its.clhs) # Do a conditioned latin hypercube sample
       s.CoV_DF<- CoVGroups[[Group]][ss,] #select the row numbers output by clhs from the cov.
-      print(paste("time to calculate hypercube = ", lubridate::as.duration(Sys.time() - start.rpt)))
-      if (sum(duplicated(s.CoV_DF) | duplicated(s.CoV_DF[nrow(s.CoV_DF):1, ])[nrow(s.CoV_DF):1]) < 2)
+      print(paste("time to calculate hypercube = ", 
+                  lubridate::as.duration(Sys.time() - start.rpt)))
+      if (sum(duplicated(s.CoV_DF) | 
+              duplicated(s.CoV_DF[nrow(s.CoV_DF):1, ])[nrow(s.CoV_DF):1]) < 2)
       {break}}
     
     ############################################
-    ## Fourth test: Kullback-Leibler (KL) divergence####
-    ####Compare whole study area covariate space with the slected sample
+    ## Kullback-Leibler (KL) divergence####
+    ####Compare whole study area covariate space with the selected sample
     #sample data hypercube (essentially the same script as for the grid data but just doing it on the sample data)
 
     ############################################
+    #grab the numerical/ continuous covariates from the sample dataframe
     s.CoVntiles <- s.CoV_DF[num_CoV_cols]
     
-    #empty dataframe for counts
+    #create empty dataframe for counts
     h.mat <- data.frame(matrix(NA, nrow = nb, ncol = 0))
     
-    #resetting these vars just in case/ for testing
+    #resetting variable to ensure smooth flow, almost certainly a better way of doing this.
     CoV_Col <- 1
-    Num_CoV <- 1
     
     #for each continuous covariate make a histogram with the bounds as set by q.mat
     for (Num_CoV in 1:no_cont){
@@ -240,12 +242,12 @@ for (w in 1:length(cseq)){ # for every sample number configuration....
       CoV_Col <- CoV_Col + 1
     }
     
-    #transform to matrix
+    #transform to matrix and add one to each count to allow KL calcs.
     h.mat <- as.matrix(h.mat+1)
     
     
     ############################################
-    #create a dataframe of all of the factor covariate values in the sample
+    #create a dataframe of all of the factor covariates in the sample
     h.Facntiles <- s.CoV_DF[fac_CoV_cols]
     
     #empty vector for counts
@@ -259,6 +261,9 @@ for (w in 1:length(cseq)){ # for every sample number configuration....
                           levels = Get_levels.m[[h.f.x]])))[,2]))
     } 
     
+    #For Output, not used in calcs as introduces NAs but easily written to xlsx.
+    h_fac.cov.mat <- sapply(h_Fac_counts.v, '[', 
+                            t(seq(max(sapply(h_Fac_counts.v, length)))))
     
     ############################################
     
@@ -268,53 +273,49 @@ for (w in 1:length(cseq)){ # for every sample number configuration....
     for (iiii in num_CoV_cols){
       n.x <- iiii -2
       klo.v <- c(klo.v, #bind following result to vector
-                 KL.empirical(cov.mat.gr[,n.x], h.mat[,n.x])) #loop for numerical  
+                 KL.empirical(cov.mat.gr[,n.x], h.mat[,n.x])) #loop for numerical covs
     }
     
     for (jjjj in fac_CoV_cols) {
       f.x <- (jjjj-no_cont)-2
       klo.v <- c(klo.v, #bind following result to vector
                  KL.empirical(c(unlist(Fac_counts.v[f.x])+1),
-                                c(unlist(h_Fac_counts.v[f.x])+1)))
+                                c(unlist(h_Fac_counts.v[f.x])+1))) #loop for factor covs
                    
     }
    
     
     klo<- mean(klo.v)
-    mat.f[j,2]<- klo  # value of 0 means no divergence
+    mat.f[j,1]<- klo  # value of 0 means no divergence
     print(paste("KL divergence =", klo))
+    
   }
   
-  #arrange outputs
-  mat.seq[w,1]<-mean(mat.f[,2])
-  mat.seq[w,2]<-sd(mat.f[,2])} ## END of LOOP
 
-dat.seq<- as.data.frame(cbind(cseq,mat.seq)) #writes the number of samples next to the outputs
+  
+  #arrange outputs
+  mat.seq[w,1]<-mean(mat.f[,1])
+  mat.seq[w,2]<-sd(mat.f[,1])
+  
+  #Here we constrain the maximum, when we hit a KL of less than 0.04 we stop increasing sample size.
+  if (mean(mat.f[,1]) <= 0.04)
+  {break}
+  
+  } ## END of LOOP
+
+dat.seq<- as.data.frame(na.omit(cbind(cseq,mat.seq))) #writes the number of samples next to the outputs
 names(dat.seq)<- c("samp_nos","mean_KL","sd_KL")
 dat.seq
 ##########################################################
 
-
-
-#######################################################  
-#plot some outputs
-plot(dat.seq[,1],dat.seq[,2],xlab="number of samples", ylab= "KL divergence")
-plot(dat.seq[,1],dat.seq[,3],xlab="number of samples", ylab= "standard deviation of percentage of total covariate variance of population account for in sample",main="Population and sample similarity")
-write.table(dat.seq, "Nav_datseq_clHC.txt", col.names=T, row.names=FALSE, sep=",")  # Save output to text file
-##########################################################
-
-
-
-##########################################################
 #Individual Plots
 #Plot 1 = Kl divergence by number of samples with line
 x <- dat.seq$samp_nos
 y <- dat.seq$mean_KL
 
-x.samp.rng <- seq(min(cseq),max(cseq),1)
-
-plot(x, y, xlab="sample number", ylab= "KL divergence")          # Initial plot of the data
+plot(x, y, xlab="sample number", ylab= "KL divergence")  # Initial plot of the data
 #########################################
+# #me checking other possible models for fitting the line, ignore.
 # fitlog1 <- lm(y~log(x))
 # summary(fitlog1)
 # 
@@ -322,7 +323,7 @@ plot(x, y, xlab="sample number", ylab= "KL divergence")          # Initial plot 
 # 
 # #DF OF PREDICTED VALUES FOR SAMPLE SIZE
 # Pred1.df <- data.frame(Pred1)
-# Pred1.df$samp_nos <- seq(min(cseq),max(cseq),1)
+# Pred1.df$samp_nos <- seq(min(dat.seq$samp_nos),max(dat.seq$samp_nos),1)
 # 
 # #Plot
 # KL_Plot <- ggplot() #create plot frame
@@ -365,8 +366,8 @@ summary(fit1)
 lines(x, fitted(fit1), col="red")
 
 #DF OF PREDICTED VALUES FOR SAMPLE SIZE
-Pred <- data.frame(2:(max(cseq)+1))
-Pred$samp_nos <- seq(1, max(cseq), 1)
+Pred <- data.frame(2:(max(dat.seq$samp_nos)+1))
+Pred$samp_nos <- seq(1, max(dat.seq$samp_nos), 1)
 Pred$Pred_KL <- predict(fit1,list(x=Pred$samp_nos))
 Pred [1] <- NULL
 
@@ -374,13 +375,16 @@ Pred [1] <- NULL
 KL_Plot <- ggplot() #create plot frame
 
 KL_Plot <- KL_Plot + #add the data points
-  geom_point(aes(x = as.numeric(dat.seq$samp_nos), y = as.numeric(dat.seq$mean_KL))) +
+  geom_point(aes(x = as.numeric(dat.seq$samp_nos), 
+                 y = as.numeric(dat.seq$mean_KL))) +
   xlab("Sample Number") +
   ylab("KL divergence")
 
-KL_Plot <- KL_Plot + geom_line(aes(x = Pred$samp_nos, y = Pred$Pred_KL), colour = "blue") +
+KL_Plot <- KL_Plot + geom_line(aes(x = Pred$samp_nos, 
+                                   y = Pred$Pred_KL), colour = "blue") +
   scale_y_continuous(limits = c(0, 0.4), breaks = seq(0, 0.4, 0.05)) +
-  scale_x_continuous(limits = c(0, max(cseq)), breaks = seq(0, max(cseq), (max(cseq)/5))) +
+  scale_x_continuous(limits = c(0, max(dat.seq$samp_nos)), 
+                     breaks = seq(0, max(dat.seq$samp_nos), 50)) +
   theme(legend.position = "none") #add the fitted line
 
 KL_Plot
@@ -393,6 +397,7 @@ y2 <- 1 - dat.seq$mean_KL
 
 plot(x, y2, xlab="sample number", ylab= "CDF 1-KL")         # Initial plot of the data
 #########################################
+# #me checking other possible models for fitting the line, ignore.
 # fitlog2 <- lm(y2~log(x))
 # summary(fitlog2)
 # 
@@ -400,7 +405,7 @@ plot(x, y2, xlab="sample number", ylab= "CDF 1-KL")         # Initial plot of th
 # 
 # #DF OF PREDICTED VALUES FOR SAMPLE SIZE
 # Pred2.df <- data.frame(Pred2)
-# Pred2.df$samp_nos <- seq(min(cseq),max(cseq),1)
+# Pred2.df$samp_nos <- seq(min(dat.seq$samp_nos),max(dat.seq$samp_nos),1)
 # 
 # ConfAchieved <- Pred2.df[as.numeric(min(which(Pred2.df$fit >= .95))),4]
 # 
@@ -445,8 +450,8 @@ summary(fit2)
 lines(x, fitted(fit2), col="red")
 
 #DF OF PREDICTED CDF VALUES FOR SAMPLE SIZE
-PredCDF <- data.frame(2:(max(cseq)+1))
-PredCDF$samp_nos <- seq(1, max(cseq), 1)
+PredCDF <- data.frame(2:(max(dat.seq$samp_nos)+1))
+PredCDF$samp_nos <- seq(1, max(dat.seq$samp_nos), 1)
 PredCDF$Pred_CDF <- predict(fit2,list(x=PredCDF$samp_nos))
 PredCDF [1] <- NULL
 
@@ -456,17 +461,23 @@ ConfAchieved <- as.numeric(which(PredCDF$Pred_CDF >= 0.95) [1])
 CDF_Plot <- ggplot() #create plot frame
 
 CDF_Plot <- CDF_Plot + #add the data points
-  geom_point(aes(x = as.numeric(dat.seq$samp_nos), y = 1- as.numeric(dat.seq$mean_KL))) +
+  geom_point(aes(x = as.numeric(dat.seq$samp_nos), 
+                 y = 1- as.numeric(dat.seq$mean_KL))) +
   xlab("Sample Number") +
   ylab("CDF of 1- KL divergence")
 
-CDF_Plot <- CDF_Plot + geom_line(aes(x = PredCDF$samp_nos, y = PredCDF$Pred_CDF), colour = "blue") +
+CDF_Plot <- CDF_Plot + geom_line(aes(x = PredCDF$samp_nos, #add the fitted line
+                                     y = PredCDF$Pred_CDF), colour = "blue") +
   scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
-  scale_x_continuous(limits = c(0, max(cseq)), breaks = seq(0, max(cseq), (max(cseq)/5))) +
+  scale_x_continuous(limits = c(0, max(dat.seq$samp_nos)), 
+                     breaks = seq(0, max(dat.seq$samp_nos), 50)) +
   theme(legend.position = "none") +
-  geom_hline(yintercept = 0.95, linetype = "dashed", alpha = 0.4, colour = "red") +
-  geom_vline(xintercept = ConfAchieved, linetype = "dashed", alpha = 0.4, colour = "red") +
-  geom_text(aes(x=ConfAchieved, label= paste0(ConfAchieved,"\n"), y=0.2), colour="red", angle=90)
+  geom_hline(yintercept = 0.95, linetype = "dashed", 
+             alpha = 0.4, colour = "red") + #add a line & text 
+  geom_vline(xintercept = ConfAchieved, linetype = "dashed", 
+             alpha = 0.4, colour = "red") + #highlighting suggested sample size
+  geom_text(aes(x=ConfAchieved, label= paste0(ConfAchieved,"\n"), 
+                y=0.2), colour="red", angle=90)
 
 
 CDF_Plot
@@ -477,45 +488,101 @@ All_Cov_Fig <- ggarrange(KL_Plot, CDF_Plot,
                          ncol = 1, nrow = 2)
 
 All_Cov_Fig
-####################################
 
+####################################
+#####
+print(paste("evaluating final sample of size: ", ConfAchieved))
+#PERFORM CLHS SIZE = NUMBER OF SAMPLES ITER = NUMBER OF ATTEMPTS TO COVER COVARIATE SPACE
+res <- clhs(CoV_DF[3:11], size = (ConfAchieved), iter = 100, progress = TRUE) 
+
+#ADD CLHS RESULTS TO DATAFRAME CONTAINING XY VALUES & COVARIATES USED IN MODEL
+samplepoints <- CoV_DF[c(res),]
+
+#DF TO POINT SHP
+SPsamplepoints <- SpatialPoints(samplepoints[1:2], CRS("+init=epsg:27700"))
+
+shapefile(SPsamplepoints, file = paste0("./ModelOutputs/BGZ_",BGZ,"/BGZ_",BGZ,"_SampLocs.shp"))
+
+####CALC COUNTS FOR THE ACTUAL SAMPLE####
+#empty dataframe for counts
+final.h.mat <- data.frame(matrix(NA, nrow = nb, ncol = 0))
+
+#resetting var
+CoV_Col <- 1
+
+#for each continuous covariate make a histogram with the bounds as set by q.mat
+for (Num_CoV in 1:no_cont){
+  #group into quantiles
+  final.Cov_hist <- hist(as.matrix(samplepoints[,(Num_CoV+2)]), #The +2 accounts for xy being readded
+                   breaks= seq(min(q.mat[,CoV_Col]),
+                               max(q.mat[,CoV_Col]),
+                               by=(as.numeric(q.mat[2,Num_CoV])
+                                   - as.numeric(q.mat[1,Num_CoV]))), plot = FALSE)
+  
+  
+  #take the counts from the histogram and add them to the dataframe created earlier
+  final.h.mat[ , ncol(final.h.mat) + 1] <- final.Cov_hist$counts                              # Append new column
+  colnames(final.h.mat)[ncol(final.h.mat)] <- paste0(names(s.CoVntiles[CoV_Col]))         # Rename column name
+  
+  CoV_Col <- CoV_Col + 1
+}
+
+#transform to matrix
+final.h.mat <- as.matrix(final.h.mat)
+
+
+############################################
+#create a dataframe of all of the factor covariate values in the sample
+final.h.Facntiles <- samplepoints[fac_CoV_cols]
+
+#empty vector for counts
+final.h_Fac_counts.v <- c()
+
+for (h.f.x in 1:no_factors){
+  #count the occurance of each factor level and add as list to vector
+  final.h_Fac_counts.v <- c(final.h_Fac_counts.v, 
+                      list(as.data.frame(table(
+                        factor(final.h.Facntiles[,h.f.x],
+                               levels = Get_levels.m[[h.f.x]])))[,2]))
+} 
+
+#For Output
+final.h_fac.cov.mat <- sapply(final.h_Fac_counts.v, '[', t(seq(max(sapply(final.h_Fac_counts.v, length)))))
+
+
+####################################
+#creating a workbook with the key outputs.
 wb <- createWorkbook()
 
-addWorksheet(wb, "q.mat.gr")
-writeData(wb, sheet = "q.mat.gr", rowNames = TRUE, colNames = TRUE, x = q.mat.gr)
+addWorksheet(wb, "Quantile.Matrix")
+writeData(wb, sheet = "Quantile.Matrix", rowNames = TRUE, colNames = TRUE, x = q.mat.gr)
 
-addWorksheet(wb, "fac.mat.gr")
-writeData(wb, sheet = "fac.mat.gr", rowNames = TRUE, colNames = TRUE, x = fac.mat.gr)
+addWorksheet(wb, "Continuous.Vars.Count")
+writeData(wb, sheet = "Continuous.Vars.Count", rowNames = TRUE, colNames = TRUE, x = cov.mat.gr)
 
-addWorksheet(wb, "cov.mat.gr")
-writeData(wb, sheet = "cov.mat.gr", rowNames = TRUE, colNames = TRUE, x = cov.mat.gr)
+addWorksheet(wb, "Categorical.Matrix")
+writeData(wb, sheet = "Categorical.Matrix", rowNames = TRUE, colNames = TRUE, x = fac.mat.gr)
 
-# addWorksheet(wb, "fac.cov.mat.1")
-# writeData(wb, sheet = "fac.cov.mat.1", rowNames = TRUE, colNames = TRUE, x = fac.cov.mat.1)
-# 
-# addWorksheet(wb, "fac.cov.mat.2")
-# writeData(wb, sheet = "fac.cov.mat.2", rowNames = TRUE, colNames = TRUE, x = fac.cov.mat.2)
+addWorksheet(wb, "Categorical.Vars.Count")
+writeData(wb, sheet = "Categorical.Vars.Count", rowNames = TRUE, colNames = TRUE, x = fac.cov.mat.gr)
 
-addWorksheet(wb, "h.mat")
-writeData(wb, sheet = "h.mat", rowNames = TRUE, colNames = TRUE, x = h.mat)
+addWorksheet(wb, "Sample.Cont.Vars.Count")
+writeData(wb, sheet = "Sample.Cont.Vars.Count", rowNames = TRUE, colNames = TRUE, x = final.h.mat)
 
-# addWorksheet(wb, "h.fac.cov.mat.1")
-# writeData(wb, sheet = "h.fac.cov.mat.1", rowNames = TRUE, colNames = TRUE, x = h.fac.cov.mat.1)
-# 
-# addWorksheet(wb, "h.fac.cov.mat.2")
-# writeData(wb, sheet = "h.fac.cov.mat.2", rowNames = TRUE, colNames = TRUE, x = h.fac.cov.mat.2)
+addWorksheet(wb, "Sample.Cate.Vars.Count")
+writeData(wb, sheet = "Sample.Cate.Vars.Count", rowNames = TRUE, colNames = TRUE, x = final.h_fac.cov.mat)
 
-addWorksheet(wb, "dat.seq")
-writeData(wb, sheet = "dat.seq", rowNames = TRUE, colNames = TRUE, x = dat.seq)
+addWorksheet(wb, "KL Divergence")
+writeData(wb, sheet = "KL Divergence", rowNames = TRUE, colNames = TRUE, x = dat.seq)
 
-addWorksheet(wb, "ConfAchieved")
-writeData(wb, sheet = "ConfAchieved", x = ConfAchieved)
+addWorksheet(wb, "Samples Required")
+writeData(wb, sheet = "Samples Required", x = ConfAchieved)
 
-saveWorkbook(wb, file=paste0("./ModelOutputs/",BGZ,"/BGZ_",BGZ,".xlsx"))
+saveWorkbook(wb, file=paste0("./ModelOutputs/BGZ_",BGZ,"/BGZ_",BGZ,".xlsx"))
 #./ModelOutputs/",BGZ,"/Group ",Group,"/BGZ_",BGZ,"_",Group,".xlsx"))
 
 # 1. Openfile
-png(file=paste0("./ModelOutputs/",BGZ,"/BGZ_",BGZ,".png")
+png(file=paste0("./ModelOutputs/BGZ_",BGZ,"/BGZ_",BGZ,".png")
 )
 
 # 2. Create the plot
@@ -526,7 +593,7 @@ dev.off()
 
 
 # 1. Open file
-pdf(file=paste0("./ModelOutputs/",BGZ,"/BGZ_",BGZ,".pdf"), 
+pdf(file=paste0("./ModelOutputs/BGZ_",BGZ,"/BGZ_",BGZ,".pdf"), 
     width = 10, 
     height = 8
 )
@@ -536,11 +603,11 @@ plot(All_Cov_Fig)
 # 3. Close the file
 dev.off()
 
-#}
+print(paste("Time to Complete BGZ",BGZ," = ", 
+            lubridate::as.duration(Sys.time() - BGZ.St)))
 
-print(paste("Time to Complete BGZ",BGZ," = ", lubridate::as.duration(Sys.time() - BGZ.St)))
+# #clear the variables so that there is sufficient resources for next run
+# rm(list=ls())
+# 
 
-#clear the variables so that there is sufficient resources to remake for next run
-rm(list=ls())
-
-}
+ }
